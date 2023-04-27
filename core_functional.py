@@ -21,6 +21,11 @@ def get_core_functions():
                         r"同时分解长句，减少重复，并提供改进建议。请只提供文本的更正版本，避免包括解释。请编辑以下文本" + "\n\n",
             "Suffix":   r"",
         },
+        "中文文学润色": {
+            "Prefix":   r"作为一名中文作家助手，你的任务是找到文章中的错别字和语法错误。用中括号标出来，并解释为何这样修改。" +
+                        r"请编辑一下文本" + "\n\n",
+            "Suffix":   r"",
+        },
         "查找语法错误": {
             "Prefix":   r"Can you help me ensure that the grammar and the spelling is correct? " +
                         r"Do not try to polish the text, if no mistake is found, tell me that this paragraph is good." +
