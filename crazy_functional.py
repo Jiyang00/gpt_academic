@@ -75,11 +75,6 @@ def get_crazy_functions():
             "AsButton": False,  # 加入下拉菜单中
             "Function": HotReload(解析一个前端项目)
         },
-        "解析整个Vue项目": {
-            "Color": "stop",  # 按钮颜色
-            "AsButton": False,  # 加入下拉菜单中
-            "Function": HotReload(解析一个Vue项目)
-        },
         "解析整个Lua项目": {
             "Color": "stop",    # 按钮颜色
             "AsButton": False,  # 加入下拉菜单中
