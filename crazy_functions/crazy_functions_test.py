@@ -179,6 +179,37 @@ def test_Langchain知识库读取():
     for cookies, cb, hist, msg in silence_stdout(读取知识库作答)(txt, llm_kwargs, plugin_kwargs, chatbot, history, system_prompt, web_port):
         cli_printer.print(cb)   #  print(cb)
 
+def test_Latex():
+    from crazy_functions.Latex输出PDF结果 import Latex英文纠错加PDF对比, Latex翻译中文并重新编译PDF
+
+    # txt = r"https://arxiv.org/abs/1706.03762"
+    # txt = r"https://arxiv.org/abs/1902.03185"
+    # txt = r"https://arxiv.org/abs/2305.18290"
+    # txt = r"https://arxiv.org/abs/2305.17608"
+    # txt = r"https://arxiv.org/abs/2211.16068"                     #  ACE
+    # txt = r"C:\Users\x\arxiv_cache\2211.16068\workfolder"  #  ACE
+    # txt = r"https://arxiv.org/abs/2002.09253"
+    # txt = r"https://arxiv.org/abs/2306.07831"
+    txt = r"https://arxiv.org/abs/2212.10156"
+    # txt = r"https://arxiv.org/abs/2211.11559"
+    # txt = r"https://arxiv.org/abs/2303.08774"
+    # txt = r"https://arxiv.org/abs/2303.12712"
+    # txt = r"C:\Users\fuqingxu\arxiv_cache\2303.12712\workfolder"
+    
+
+    for cookies, cb, hist, msg in (Latex翻译中文并重新编译PDF)(txt, llm_kwargs, plugin_kwargs, chatbot, history, system_prompt, web_port):
+        cli_printer.print(cb)   #  print(cb)
+
+
+
+    # txt = "2302.02948.tar"
+    # print(txt)
+    # main_tex, work_folder = Latex预处理(txt)
+    # print('main tex:', main_tex)
+    # res = 编译Latex(main_tex, work_folder)
+    # # for cookies, cb, hist, msg in silence_stdout(编译Latex)(txt, llm_kwargs, plugin_kwargs, chatbot, history, system_prompt, web_port):
+    #     cli_printer.print(cb)   #  print(cb)
+
 
 
 # test_解析一个Python项目()
@@ -192,8 +223,9 @@ def test_Langchain知识库读取():
 # test_联网回答问题()
 # test_解析ipynb文件()
 # test_数学动画生成manim()
-test_Langchain知识库()
+# test_Langchain知识库()
 # test_Langchain知识库读取()
-
-input("程序完成，回车退出。")
-print("退出。")
+if __name__ == "__main__":
+    test_Latex()
+    input("程序完成，回车退出。")
+    print("退出。")
