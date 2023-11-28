@@ -1,5 +1,7 @@
-from toolbox import update_ui, trimmed_format_exc, gen_time_str
-from toolbox import CatchException, report_execption, write_results_to_file
+import glob, time, os, re, logging
+from toolbox import update_ui, trimmed_format_exc, gen_time_str, disable_auto_promotion
+from toolbox import CatchException, report_exception, get_log_folder
+from toolbox import write_history_to_file, promote_file_to_downloadzone
 fast_debug = False
 
 class PaperFileGroup():
@@ -11,7 +13,7 @@ class PaperFileGroup():
         self.sp_file_tag = []
 
         # count_token
-        from request_llm.bridge_all import model_info
+        from request_llms.bridge_all import model_info
         enc = model_info["gpt-3.5-turbo"]['tokenizer']
         def get_token_num(txt): return len(enc.encode(txt, disallowed_special=()))
         self.get_token_num = get_token_num
@@ -32,7 +34,7 @@ class PaperFileGroup():
                     self.sp_file_contents.append(segment)
                     self.sp_file_index.append(index)
                     self.sp_file_tag.append(self.file_paths[index] + f".part-{j}.md")
-        print('Segmentation: done')
+        logging.info('Segmentation: done')
 
     def merge_result(self):
         self.file_result = ["" for _ in range(len(self.file_paths))]
@@ -42,13 +44,13 @@ class PaperFileGroup():
     def write_result(self, language):
         manifest = []
         for path, res in zip(self.file_paths, self.file_result):
-            with open(path + f'.{gen_time_str()}.{language}.md', 'w', encoding='utf8') as f:
-                manifest.append(path + f'.{gen_time_str()}.{language}.md')
+            dst_file = os.path.join(get_log_folder(), f'{gen_time_str()}.md')
+            with open(dst_file, 'w', encoding='utf8') as f:
+                manifest.append(dst_file)
                 f.write(res)
         return manifest
 
 def 多文件翻译(file_manifest, project_folder, llm_kwargs, plugin_kwargs, chatbot, history, system_prompt, language='en'):
-    import time, os, re
     from .crazy_utils import request_gpt_model_multi_threads_with_very_awesome_ui_and_high_efficiency
 
     #  <-------- 读取Markdown文件，删除其中的所有注释 ----------> 
@@ -99,31 +101,41 @@ def 多文件翻译(file_manifest, project_folder, llm_kwargs, plugin_kwargs, ch
         pfg.merge_result()
         pfg.write_result(language)
     except:
-        print(trimmed_format_exc())
+        logging.error(trimmed_format_exc())
 
     #  <-------- 整理结果，退出 ----------> 
-    create_report_file_name = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()) + f"-chatgpt.polish.md"
-    res = write_results_to_file(gpt_response_collection, file_name=create_report_file_name)
+    create_report_file_name = gen_time_str() + f"-chatgpt.md"
+    res = write_history_to_file(gpt_response_collection, file_basename=create_report_file_name)
+    promote_file_to_downloadzone(res, chatbot=chatbot)
     history = gpt_response_collection
     chatbot.append((f"{fp}完成了吗？", res))
     yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
 
 
-def get_files_from_everything(txt):
-    import glob, os
-
+def get_files_from_everything(txt, preference=''):
+    if txt == "": return False, None, None
     success = True
     if txt.startswith('http'):
-        # 网络的远程文件
-        txt = txt.replace("https://github.com/", "https://raw.githubusercontent.com/")
-        txt = txt.replace("/blob/", "/")
         import requests
         from toolbox import get_conf
-        proxies, = get_conf('proxies')
+        proxies = get_conf('proxies')
+        # 网络的远程文件
+        if preference == 'Github':
+            logging.info('正在从github下载资源 ...')
+            if not txt.endswith('.md'):
+                # Make a request to the GitHub API to retrieve the repository information
+                url = txt.replace("https://github.com/", "https://api.github.com/repos/") + '/readme'
+                response = requests.get(url, proxies=proxies)
+                txt = response.json()['download_url']
+            else:
+                txt = txt.replace("https://github.com/", "https://raw.githubusercontent.com/")
+                txt = txt.replace("/blob/", "/")
+
         r = requests.get(txt, proxies=proxies)
-        with open('./gpt_log/temp.md', 'wb+') as f: f.write(r.content)
-        project_folder = './gpt_log/'
-        file_manifest = ['./gpt_log/temp.md']
+        download_local = f'{get_log_folder(plugin_name="批量Markdown翻译")}/raw-readme-{gen_time_str()}.md'
+        project_folder = f'{get_log_folder(plugin_name="批量Markdown翻译")}'
+        with open(download_local, 'wb+') as f: f.write(r.content)
+        file_manifest = [download_local]
     elif txt.endswith('.md'):
         # 直接给定文件
         file_manifest = [txt]
@@ -133,6 +145,8 @@ def get_files_from_everything(txt):
         project_folder = txt
         file_manifest = [f for f in glob.glob(f'{project_folder}/**/*.md', recursive=True)]
     else:
+        project_folder = None
+        file_manifest = []
         success = False
 
     return success, file_manifest, project_folder
@@ -145,30 +159,30 @@ def Markdown英译中(txt, llm_kwargs, plugin_kwargs, chatbot, history, system_p
         "函数插件功能？",
         "对整个Markdown项目进行翻译。函数插件贡献者: Binary-Husky"])
     yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
+    disable_auto_promotion(chatbot)
 
     # 尝试导入依赖，如果缺少依赖，则给出安装建议
     try:
         import tiktoken
-        import glob, os
     except:
-        report_execption(chatbot, history,
+        report_exception(chatbot, history,
                          a=f"解析项目: {txt}",
                          b=f"导入软件依赖失败。使用该模块需要额外依赖，安装方法```pip install --upgrade tiktoken```。")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
         return
     history = []    # 清空历史，以免输入溢出
 
-    success, file_manifest, project_folder = get_files_from_everything(txt)
+    success, file_manifest, project_folder = get_files_from_everything(txt, preference="Github")
 
     if not success:
         # 什么都没有
         if txt == "": txt = '空空如也的输入栏'
-        report_execption(chatbot, history, a = f"解析项目: {txt}", b = f"找不到本地项目或无权访问: {txt}")
+        report_exception(chatbot, history, a = f"解析项目: {txt}", b = f"找不到本地项目或无权访问: {txt}")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
         return
 
     if len(file_manifest) == 0:
-        report_execption(chatbot, history, a = f"解析项目: {txt}", b = f"找不到任何.md文件: {txt}")
+        report_exception(chatbot, history, a = f"解析项目: {txt}", b = f"找不到任何.md文件: {txt}")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
         return
 
@@ -185,13 +199,13 @@ def Markdown中译英(txt, llm_kwargs, plugin_kwargs, chatbot, history, system_p
         "函数插件功能？",
         "对整个Markdown项目进行翻译。函数插件贡献者: Binary-Husky"])
     yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
+    disable_auto_promotion(chatbot)
 
     # 尝试导入依赖，如果缺少依赖，则给出安装建议
     try:
         import tiktoken
-        import glob, os
     except:
-        report_execption(chatbot, history,
+        report_exception(chatbot, history,
                          a=f"解析项目: {txt}",
                          b=f"导入软件依赖失败。使用该模块需要额外依赖，安装方法```pip install --upgrade tiktoken```。")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
@@ -201,11 +215,11 @@ def Markdown中译英(txt, llm_kwargs, plugin_kwargs, chatbot, history, system_p
     if not success:
         # 什么都没有
         if txt == "": txt = '空空如也的输入栏'
-        report_execption(chatbot, history, a = f"解析项目: {txt}", b = f"找不到本地项目或无权访问: {txt}")
+        report_exception(chatbot, history, a = f"解析项目: {txt}", b = f"找不到本地项目或无权访问: {txt}")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
         return
     if len(file_manifest) == 0:
-        report_execption(chatbot, history, a = f"解析项目: {txt}", b = f"找不到任何.md文件: {txt}")
+        report_exception(chatbot, history, a = f"解析项目: {txt}", b = f"找不到任何.md文件: {txt}")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
         return
     yield from 多文件翻译(file_manifest, project_folder, llm_kwargs, plugin_kwargs, chatbot, history, system_prompt, language='zh->en')
@@ -218,13 +232,13 @@ def Markdown翻译指定语言(txt, llm_kwargs, plugin_kwargs, chatbot, history,
         "函数插件功能？",
         "对整个Markdown项目进行翻译。函数插件贡献者: Binary-Husky"])
     yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
+    disable_auto_promotion(chatbot)
 
     # 尝试导入依赖，如果缺少依赖，则给出安装建议
     try:
         import tiktoken
-        import glob, os
     except:
-        report_execption(chatbot, history,
+        report_exception(chatbot, history,
                          a=f"解析项目: {txt}",
                          b=f"导入软件依赖失败。使用该模块需要额外依赖，安装方法```pip install --upgrade tiktoken```。")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
@@ -234,11 +248,11 @@ def Markdown翻译指定语言(txt, llm_kwargs, plugin_kwargs, chatbot, history,
     if not success:
         # 什么都没有
         if txt == "": txt = '空空如也的输入栏'
-        report_execption(chatbot, history, a = f"解析项目: {txt}", b = f"找不到本地项目或无权访问: {txt}")
+        report_exception(chatbot, history, a = f"解析项目: {txt}", b = f"找不到本地项目或无权访问: {txt}")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
         return
     if len(file_manifest) == 0:
-        report_execption(chatbot, history, a = f"解析项目: {txt}", b = f"找不到任何.md文件: {txt}")
+        report_exception(chatbot, history, a = f"解析项目: {txt}", b = f"找不到任何.md文件: {txt}")
         yield from update_ui(chatbot=chatbot, history=history) # 刷新界面
         return
     
